@@ -17,12 +17,17 @@
     "@types/node": "^22.4.1",
     "@types/socket.io": "^3.0.2",
     "cors": "^2.8.5",
+    "dslr-photobooth-microservice": "file:",
     "express": "^4.19.2",
     "fluent-ffmpeg": "^2.1.3",
-    "gphoto2": "^0.3.2",
+    "fs": "^0.0.1-security",
+    "napi-canon-cameras": "file:node_packages/@dimensional/napi-canon-cameras.tgz",
+    "path": "^0.12.7",
+    "pdf-lib": "^1.17.1",
+    "sharp": "^0.33.5",
     "socket.io": "^4.7.5",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.4",
-    "wrtc": "^0.4.7"
+    "uuid": "^10.0.0"
   }
 }
