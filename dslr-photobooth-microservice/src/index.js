@@ -152,8 +152,6 @@ function main() {
    try {
     camera.setEventHandler(
       (eventName, event) => {
-        console.log('anjing')
-        console.log(eventName)
           if (
               eventName === Camera.EventName.FileCreate ||
               eventName === Camera.EventName.DownloadRequest
@@ -163,8 +161,6 @@ function main() {
                   file,
                   file.format
               );
-              console.log('kontollllllll')
-              console.log(file.localFile)
               
               file.downloadToPath(process.cwd() + '/images');
               const filePath = process.cwd() + '/images/' + file.name
@@ -184,7 +180,6 @@ function main() {
                 console.log('Base64 image emitted.');
 
               });
-              console.log('KONTOl')
           }
       }
   );
@@ -201,7 +196,6 @@ function main() {
     if (camera.getProperty(CameraProperty.ID.Evf_Mode).available) {
       camera.startLiveView();
       liveMode = true;
-      console.log('woy')
 
       setInterval(() => {
         try {
