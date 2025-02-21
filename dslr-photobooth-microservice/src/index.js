@@ -9,7 +9,9 @@ const { v4: uuidv4 } = require('uuid');
 const sharp = require('sharp');
 const {cameraBrowser, CameraProperty, Option, ImageQuality, Camera, watchCameras} = require('napi-canon-cameras')
 const socketIo = require('socket.io');
-
+const usb = require('usb');
+const findProcess = require('find-process');
+const { SerialPort } = require('serialport');
 
 
 const app = express();
@@ -42,6 +44,195 @@ io.on('connection', (socket) => {
 
 
 let camera = null
+let liveViewInterval = null;
+
+async function resetCameraPort() {
+  try {
+    console.log('Looking for Canon-related processes...');
+
+    // Cari process yang related dengan Canon/EDSDK
+    const processes = await findProcess('name', /(canon|edsdk|eos)/i);
+    
+    if (processes.length > 0) {
+      console.log('Found processes:', processes);
+      
+      for (const proc of processes) {
+        try {
+          process.kill(proc.pid);
+          console.log(`Killed process ${proc.name} (PID: ${proc.pid})`);
+        } catch (e) {
+          console.log(`Failed to kill process ${proc.name}:`, e);
+        }
+      }
+    } else {
+      console.log('No Canon-related processes found');
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    return true;
+  } catch (error) {
+    console.error('Error killing processes:', error);
+    return false;
+  }
+}
+
+async function releaseCamera() {
+  try {
+    if (camera) {
+      // Stop live view interval if exists
+      if (liveViewInterval) {
+        clearInterval(liveViewInterval);
+        liveViewInterval = null;
+      }
+
+      
+      // Stop live view if running
+      try {
+        if (camera.getProperty(CameraProperty.ID.Evf_Mode).available) {
+          camera.stopLiveView();
+        }
+      } catch (e) {
+        console.log('Live view may already be stopped');
+      }
+
+      // Disconnect camera
+      try {
+        resetCameraPort()
+      } catch (e) {
+        console.log('Camera may already be disconnected');
+      }
+
+      camera = null;
+    }
+    
+    // Wait for resources to be released
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    return true;
+  } catch (error) {
+    console.error('Error releasing camera port:', error);
+    throw error;
+  }
+}
+
+async function handleCapturedImage(file) {
+  try {
+    const downloadPath = process.cwd() + '/images';
+    file.downloadToPath(downloadPath);
+    
+    const filePath = downloadPath + '/' + file.name;
+    console.log(`Downloaded ${file.name} to ${filePath}`);
+
+    const data = await fs.promises.readFile(filePath);
+    const base64Image = data.toString('base64');
+    io.emit('capture', `data:image/jpeg;base64,${base64Image}`);
+    console.log('Base64 image emitted.');
+  } catch (error) {
+    console.error('Error handling captured image:', error);
+    throw error;
+  }
+}
+
+function setupLiveView() {
+  if (!camera.getProperty(CameraProperty.ID.Evf_Mode).available) {
+    console.log('Live view mode is not available for this camera.');
+    return false;
+  }
+
+  try {
+    camera.startLiveView();
+    
+    liveViewInterval = setInterval(() => {
+      try {
+        const image = camera.getLiveViewImage();
+        if (image) {
+          const base64Image = image.getDataURL();
+          io.emit('liveview', base64Image);
+        }
+      } catch (err) {
+        console.error('Failed to get live view image:', err);
+      }
+    }, 50);
+
+    return true;
+  } catch (error) {
+    console.error('Error setting up live view:', error);
+    return false;
+  }
+}
+
+async function runCameraService() {
+  try {
+    camera = cameraBrowser.getCamera();
+    if (!camera) {
+      console.log('No camera found.');
+      return false;
+    }
+    console.log('Camera found, initializing...');
+    // Setup event handler
+    camera.setEventHandler((eventName, event) => {
+      if (
+        eventName === Camera.EventName.FileCreate ||
+        eventName === Camera.EventName.DownloadRequest
+      ) {
+        handleCapturedImage(event.file).catch(error => {
+          console.error('Error in capture handler:', error);
+        });
+      }
+    });
+
+    // Connect and configure camera
+    await camera.connect();
+    
+    camera.setProperties({
+      [CameraProperty.ID.SaveTo]: Option.SaveTo.Host,
+      [CameraProperty.ID.ImageQuality]: ImageQuality.ID.LargeJPEGFine,
+      [CameraProperty.ID.WhiteBalance]: Option.WhiteBalance.Fluorescent
+    });
+
+    // Setup live view
+    setupLiveView();
+
+    // Watch for camera changes
+    watchCameras();
+
+    return true;
+  } catch (error) {
+    console.error('Error in runCameraService:');
+    console.log(error.EDS_ERROR.toJSON())
+    return false;
+  }
+}
+
+async function main() {
+  console.log('Starting main...');
+  
+  try {
+    const success = await runCameraService();
+    
+    if (!success) {
+      console.log('Failed to initialize camera service, attempting recovery...');
+      
+      try {
+        await releaseCamera();
+        console.log('Port released, attempting to restart camera service...');
+        
+        // Wait before trying again
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        const retrySuccess = await runCameraService();
+        if (!retrySuccess) {
+          console.log('Failed to recover camera service');
+        }
+      } catch (retryError) {
+        console.error('Failed to recover from error:', retryError);
+      }
+    }
+  } catch (error) {
+    console.error('Error in main:', error);
+  }
+}
+
 
 app.post('/print', async (req, res) => {
   try {
@@ -142,88 +333,6 @@ app.post('/capture', (req, res) => {
   }
   return res.status(500).json({"message": "there is no camera here..."});
 });
-
-function main() {
-  console.log('run main')
-  camera = cameraBrowser.getCamera()
-  if (camera) {
-    console.log('ada camera', camera)
-  
-   try {
-    camera.setEventHandler(
-      (eventName, event) => {
-          if (
-              eventName === Camera.EventName.FileCreate ||
-              eventName === Camera.EventName.DownloadRequest
-          ) {
-              const file = event.file;
-              console.log(
-                  file,
-                  file.format
-              );
-              
-              file.downloadToPath(process.cwd() + '/images');
-              const filePath = process.cwd() + '/images/' + file.name
-              console.log(`Downloaded ${file.name}.`);
-              console.log(filePath)
-              fs.readFile(filePath, (err, data) => {
-                console.log('ini data', data)
-                console.log('halo 2')
-                if (err) {
-                  console.log(err)
-                  console.error('Error reading file:', err);
-                  return;
-                }
-
-                const base64Image = data.toString('base64');
-                io.emit('capture', `data:image/jpeg;base64,${base64Image}`);
-                console.log('Base64 image emitted.');
-
-              });
-          }
-      }
-  );
-    camera.connect();
-    console.log(camera.portName)
-    camera.setProperties(
-        {
-            [CameraProperty.ID.SaveTo]: Option.SaveTo.Host,
-            [CameraProperty.ID.ImageQuality]: ImageQuality.ID.LargeJPEGFine,
-            [CameraProperty.ID.WhiteBalance]: Option.WhiteBalance.Fluorescent
-        }
-    );
-    let liveMode = false;
-    if (camera.getProperty(CameraProperty.ID.Evf_Mode).available) {
-      camera.startLiveView();
-      liveMode = true;
-
-      setInterval(() => {
-        try {
-          // Get the live view image
-          const image = camera.getLiveViewImage();
-          if (image) {
-            // Convert image data to base64 and emit through socket.io
-            const base64Image = image.getDataURL();
-            io.emit('liveview', base64Image); // Emit live view data
-            console.log('Live view image emitted.');
-          }
-        } catch (err) {
-          console.error('Failed to get live view image:', err);
-        }
-      }, 50); // Emit every 200 milliseconds
-    } else {
-      console.log('Live view mode is not available for this camera.');
-    }
-
-    watchCameras()
-
-   } catch (error) {
-     console.log(error)
-   }
-} else {
-    console.log('No camera found.');
-}
-}
 const port = 9000;
 server.listen(port, '0.0.0.0', () => {
   main()

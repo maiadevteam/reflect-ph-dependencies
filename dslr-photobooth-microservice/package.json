@@ -19,15 +19,18 @@
     "cors": "^2.8.5",
     "dslr-photobooth-microservice": "file:",
     "express": "^4.19.2",
+    "find-process": "^1.4.10",
     "fluent-ffmpeg": "^2.1.3",
     "fs": "^0.0.1-security",
     "napi-canon-cameras": "file:node_packages/@dimensional/napi-canon-cameras.tgz",
     "path": "^0.12.7",
     "pdf-lib": "^1.17.1",
+    "serialport": "^13.0.0",
     "sharp": "^0.33.5",
     "socket.io": "^4.7.5",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.4",
+    "usb": "^2.14.0",
     "uuid": "^10.0.0"
   }
 }
