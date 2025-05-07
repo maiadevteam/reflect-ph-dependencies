@@ -249,8 +249,10 @@ app.post('/print', async (req, res) => {
     // Convert image to 300 DPI using sharp
     const outputImagePath = path.join(process.cwd(), 'temp', `${uuidv4()}-300dpi.png`);
     await sharp(tempImagePath)
-      .resize({ width: 1200, height: 1800, fit: 'contain' })
-      .toFile(outputImagePath);
+  .resize({ width: 3000, height: 4500, fit: 'contain' }) // Resolusi 2.5x lipat
+  .sharpen() // Menambahkan ketajaman
+  .png({ quality: 100, compressionLevel: 0 })
+  .toFile(outputImagePath);
 
     // Read the converted image
     const updatedImageBuffer = await fs.readFile(outputImagePath);
