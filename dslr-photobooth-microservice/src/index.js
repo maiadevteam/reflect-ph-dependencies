@@ -257,48 +257,63 @@ app.post('/api/print', async (req, res) => {
   try {
     const { imageStr } = req.body;
 
-    // Decode base64 image data and save it to a file with a unique filename
+    // Decode base64 image data
     const base64Data = imageStr.replace(/^data:image\/\w+;base64,/, '');
     const imageBuffer = Buffer.from(base64Data, 'base64');
-    const uniqueFileName = `${uuidv4()}.png`;
-    const tempImagePath = path.join(process.cwd(), 'temp', uniqueFileName);
-    await fsPromises.mkdir(path.dirname(tempImagePath), { recursive: true });
-    await fsPromises.writeFile(tempImagePath, imageBuffer);
-
-    // Create a new PDF document with fixed dimensions for 4x6 photo paper
-    const pdfDoc = await PDFDocument.create();
-    const page = pdfDoc.addPage([400, 600]); // 4x6 inch dimensions
-    const { width, height } = page.getSize();
-
-    // Embed the uploaded image into the PDF
-    const embeddedImage = await pdfDoc.embedPng(imageBuffer);
-
-    // Calculate dimensions for centering the image on the page
-    const imageWidth = width;
-    const imageHeight = (imageWidth / embeddedImage.width) * embeddedImage.height;
-
-    const x = 0;
-    const y = 0;
-
-    page.drawImage(embeddedImage, {
-      x,
-      y,
-      width: imageWidth,
-      height: imageHeight,
-    });
-
-    // Rotate the PDF document (90 degrees clockwise) before saving
-    page.setRotation(degrees(90));
     
-    // Save the PDF document to a file
-    const pdfFilePath = path.join(process.cwd(), 'temp', `${uuidv4()}.pdf`);
+    // Create temp directory if it doesn't exist
+    const tempDir = path.join(process.cwd(), 'temp');
+    await fsPromises.mkdir(tempDir, { recursive: true });
+    
+    // Create unique filenames for original and processed images
+    const uniqueId = uuidv4();
+    const originalImagePath = path.join(tempDir, `${uniqueId}_original.png`);
+    const processedImagePath = path.join(tempDir, `${uniqueId}_processed.png`);
+    
+    // Save original image temporarily
+    await fsPromises.writeFile(originalImagePath, imageBuffer);
+    
+    // Process the image - rotate 90 degrees and resize to 432x288
+    // The image is always assumed to be portrait and needs to be rotated to landscape
+    await sharp(imageBuffer)
+      .rotate(90) // Rotate 90 degrees clockwise
+      .resize(432, 288, { // Resize to exact dimensions
+        fit: 'contain',
+        background: { r: 255, g: 255, b: 255, alpha: 1 } // White background
+      })
+      .png()
+      .toFile(processedImagePath);
+    
+    console.log('Image processed successfully to:', processedImagePath);
+    
+    // Create a PDF with the processed image since PDFtoPrinter.exe only works with PDFs
+    const pdfDoc = await PDFDocument.create();
+    const page = pdfDoc.addPage([432, 288]); // Use the same dimensions for the PDF
+    
+    // Read the processed image
+    const processedImageData = await fsPromises.readFile(processedImagePath);
+    const embeddedImage = await pdfDoc.embedPng(processedImageData);
+    
+    // Draw the image on the PDF page (full size)
+    page.drawImage(embeddedImage, {
+      x: 0,
+      y: 0,
+      width: 432,
+      height: 288,
+    });
+    
+    // Save the PDF
+    const pdfPath = path.join(tempDir, `${uniqueId}.pdf`);
     const pdfBytes = await pdfDoc.save();
-    await fsPromises.writeFile(pdfFilePath, pdfBytes);
+    await fsPromises.writeFile(pdfPath, pdfBytes);
+    
+    console.log('PDF created successfully at:', pdfPath);
 
-
-    // Use spawn to execute the print command
-    const printCommand = path.join(process.cwd(), 'public', 'SumatraPDF-3.5.2-64.exe');
-    const printArgs = ['-print-to-default', '-silent', pdfFilePath];
+    // Use PDFtoPrinter.exe to print the PDF
+    const printCommand = path.join(process.cwd(), 'public', 'PDFtoPrinter.exe');
+    // Syntax for PDFtoPrinter.exe is: PDFtoPrinter.exe filename [printername]
+    // If printername is omitted or set to empty string, it uses default printer
+    const printArgs = [pdfPath]; // Just specify the PDF, will print to default printer
     const printProcess = spawn(printCommand, printArgs);
 
     printProcess.on('close', async (code) => {
@@ -308,15 +323,13 @@ app.post('/api/print', async (req, res) => {
       }
       console.log('Printed successfully');
       
-      // Clean up temporary files
-      await fsPromises.unlink(tempImagePath);
-      await fsPromises.unlink(pdfFilePath);
+      // Clean up temporary files (commented out as requested)
+      // await fsPromises.unlink(originalImagePath);
+      // await fsPromises.unlink(processedImagePath);
+      // await fsPromises.unlink(pdfPath);
       
       res.json({ message: 'Printed successfully' });
     });
-
-    // Initial response (comment this out if you want to wait for print completion)
-    // res.json({ message: 'Printing request received' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to print' });
