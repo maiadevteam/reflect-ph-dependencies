@@ -324,9 +324,9 @@ app.post('/api/print', async (req, res) => {
       console.log('Printed successfully');
       
       // Clean up temporary files (commented out as requested)
-      // await fsPromises.unlink(originalImagePath);
-      // await fsPromises.unlink(processedImagePath);
-      // await fsPromises.unlink(pdfPath);
+      await fsPromises.unlink(originalImagePath);
+      await fsPromises.unlink(processedImagePath);
+      await fsPromises.unlink(pdfPath);
       
       res.json({ message: 'Printed successfully' });
     });
