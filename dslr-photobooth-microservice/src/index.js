@@ -265,37 +265,39 @@ app.post('/api/print', async (req, res) => {
     await fsPromises.mkdir(path.dirname(tempImagePath), { recursive: true });
     await fsPromises.writeFile(tempImagePath, imageBuffer);
 
-    // Convert image to 300 DPI using sharp
-    const outputImagePath = path.join(process.cwd(), 'temp', `${uuidv4()}-300dpi.png`);
-    await sharp(tempImagePath)
-  .resize({ width: 3000, height: 4500, fit: 'contain' }) // Resolusi 2.5x lipat
-  .sharpen() // Menambahkan ketajaman
-  .png({ quality: 100, compressionLevel: 0 })
-  .toFile(outputImagePath);
+    // Create a new PDF document with fixed dimensions for 4x6 photo paper
+    const pdfDoc = await PDFDocument.create();
+    const page = pdfDoc.addPage([400, 600]); // 4x6 inch dimensions
+    const { width, height } = page.getSize();
 
-    // Read the converted image
-    // const updatedImageBuffer = await fsPromises.readFile(outputImagePath);
+    // Embed the uploaded image into the PDF
+    const embeddedImage = await pdfDoc.embedPng(imageBuffer);
 
-    // Determine the operating system for direct image printing
-    const platform = process.platform;
+    // Calculate dimensions for centering the image on the page
+    const imageWidth = width;
+    const imageHeight = (imageWidth / embeddedImage.width) * embeddedImage.height;
 
-    let printCommand;
-    let printArgs;
+    const x = 0;
+    const y = 0;
 
-    if (platform === 'win32') {
-      // Windows
-      printCommand = path.join(process.cwd(), 'public', 'SumatraPDF-3.5.2-64.exe');
-      // Print the image directly
-      printArgs = ['-print-to-default', '-print-settings', 'landscape', '-silent', outputImagePath];
-    } else if (platform === 'darwin' || platform === 'linux') {
-      // macOS and Linux
-      printCommand = 'lp';
-      printArgs = ['-s', outputImagePath];
-    } else {
-      throw new Error('Unsupported operating system');
-    }
+    page.drawImage(embeddedImage, {
+      x,
+      y,
+      width: imageWidth,
+      height: imageHeight,
+    });
+
+    // Save the PDF document to a file
+    const pdfFilePath = path.join(process.cwd(), 'temp', `${uuidv4()}.pdf`);
+    const pdfBytes = await pdfDoc.save();
+    await fsPromises.writeFile(pdfFilePath, pdfBytes);
+
+    // Specify the path to SumatraPDF executable
+    const sumatraExePath = path.join(process.cwd(), 'public', 'SumatraPDF-3.5.2-64.exe');
 
     // Use spawn to execute the print command
+    const printCommand = path.join(process.cwd(), 'public', 'SumatraPDF-3.5.2-64.exe');
+    const printArgs = ['-print-to-default', '-silent', pdfFilePath];
     const printProcess = spawn(printCommand, printArgs);
 
     printProcess.on('close', async (code) => {
@@ -304,14 +306,16 @@ app.post('/api/print', async (req, res) => {
         return res.status(500).json({ error: 'Failed to print' });
       }
       console.log('Printed successfully');
+      
       // Clean up temporary files
       await fsPromises.unlink(tempImagePath);
-      await fsPromises.unlink(outputImagePath);
+      await fsPromises.unlink(pdfFilePath);
+      
       res.json({ message: 'Printed successfully' });
     });
 
-    // Don't send a response here, wait for the print process to complete
-    // Response will be sent in the 'close' event handler
+    // Initial response (comment this out if you want to wait for print completion)
+    // res.json({ message: 'Printing request received' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to print' });
