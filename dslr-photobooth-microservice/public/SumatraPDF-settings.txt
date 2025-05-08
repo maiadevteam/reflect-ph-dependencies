@@ -138,17 +138,8 @@ SessionData [
 				ScrollPos = -0.240572 -1
 				ShowToc = false
 			]
-			[
-				FilePath = C:\Users\isabu\Downloads\tai_reflect\reflect-ph-dependencies\dslr-photobooth-microservice\temp\f169bb05-fe49-4311-9e2d-d9820bb6310b-300dpi.png
-				DisplayMode = single page
-				PageNo = 1
-				Zoom = fit page
-				Rotation = 0
-				ScrollPos = -1.4096 -1
-				ShowToc = false
-			]
 		]
-		TabIndex = 3
+		TabIndex = 2
 		WindowState = 1
 		WindowPos = 0 0 1080 1860
 		SidebarDx = 0

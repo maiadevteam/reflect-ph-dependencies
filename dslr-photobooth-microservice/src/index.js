@@ -1,7 +1,7 @@
 const express = require('express');
 const http = require('http');
 const cors = require('cors');
-const { PDFDocument } = require('pdf-lib');
+const { PDFDocument, degrees } = require('pdf-lib');
 const fs = require('fs');
 const fsPromises = require('fs').promises;
 const path = require('path');
@@ -287,13 +287,14 @@ app.post('/api/print', async (req, res) => {
       height: imageHeight,
     });
 
+    // Rotate the PDF document (90 degrees clockwise) before saving
+    page.setRotation(degrees(90));
+    
     // Save the PDF document to a file
     const pdfFilePath = path.join(process.cwd(), 'temp', `${uuidv4()}.pdf`);
     const pdfBytes = await pdfDoc.save();
     await fsPromises.writeFile(pdfFilePath, pdfBytes);
 
-    // Specify the path to SumatraPDF executable
-    const sumatraExePath = path.join(process.cwd(), 'public', 'SumatraPDF-3.5.2-64.exe');
 
     // Use spawn to execute the print command
     const printCommand = path.join(process.cwd(), 'public', 'SumatraPDF-3.5.2-64.exe');
