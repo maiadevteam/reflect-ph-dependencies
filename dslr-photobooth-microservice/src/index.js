@@ -276,35 +276,7 @@ app.post('/api/print', async (req, res) => {
     // Read the converted image
     const updatedImageBuffer = await fsPromises.readFile(outputImagePath);
 
-    // Get dimensions of the image
-    const imageInfo = await sharp(outputImagePath).metadata();
-    
-    // Create a new PDF document with EXACT image dimensions
-    const pdfDoc = await PDFDocument.create();
-    const page = pdfDoc.addPage([imageInfo.width, imageInfo.height]);
-    
-    // Embed the uploaded image into the PDF
-    const embeddedImage = await pdfDoc.embedPng(updatedImageBuffer);
-    
-    // Use exact dimensions with no padding
-    const imageWidth = page.getWidth();
-    const imageHeight = page.getHeight();
-    const x = 0;
-    const y = 0;
-    
-    page.drawImage(embeddedImage, {
-      x,
-      y,
-      width: imageWidth,
-      height: imageHeight,
-    });
-
-    // Save the PDF document to a file
-    const pdfFilePath = path.join(process.cwd(), 'temp', `${uuidv4()}.pdf`);
-    const pdfBytes = await pdfDoc.save();
-    await fsPromises.writeFile(pdfFilePath, pdfBytes);
-
-    // Determine the operating system
+    // Determine the operating system for direct image printing
     const platform = process.platform;
 
     let printCommand;
@@ -313,11 +285,12 @@ app.post('/api/print', async (req, res) => {
     if (platform === 'win32') {
       // Windows
       printCommand = path.join(process.cwd(), 'public', 'SumatraPDF-3.5.2-64.exe');
-      printArgs = ['-print-to-default', '-silent', pdfFilePath];
+      // Print the image directly
+      printArgs = ['-print-to-default', '-silent', outputImagePath];
     } else if (platform === 'darwin' || platform === 'linux') {
       // macOS and Linux
       printCommand = 'lp';
-      printArgs = ['-s', pdfFilePath];
+      printArgs = ['-s', outputImagePath];
     } else {
       throw new Error('Unsupported operating system');
     }
@@ -334,7 +307,6 @@ app.post('/api/print', async (req, res) => {
       // Clean up temporary files
       await fsPromises.unlink(tempImagePath);
       await fsPromises.unlink(outputImagePath);
-      await fsPromises.unlink(pdfFilePath);
       res.json({ message: 'Printed successfully' });
     });
 
