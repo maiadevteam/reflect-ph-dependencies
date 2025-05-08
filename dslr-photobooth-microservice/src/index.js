@@ -276,18 +276,22 @@ app.post('/api/print', async (req, res) => {
     // Read the converted image
     const updatedImageBuffer = await fsPromises.readFile(outputImagePath);
 
-    // Create a new PDF document
+    // Get dimensions of the image
+    const imageInfo = await sharp(outputImagePath).metadata();
+    
+    // Create a new PDF document with EXACT image dimensions
     const pdfDoc = await PDFDocument.create();
-    // Create page in portrait orientation (height > width)
-    const page = pdfDoc.addPage([1200, 1800].reverse());
-    const { width, height } = page.getSize();
-
+    const page = pdfDoc.addPage([imageInfo.width, imageInfo.height]);
+    
     // Embed the uploaded image into the PDF
     const embeddedImage = await pdfDoc.embedPng(updatedImageBuffer);
-    const imageWidth = width;
-    const imageHeight = (imageWidth / embeddedImage.width) * embeddedImage.height;
-    const x = (width - imageWidth) / 2;
-    const y = (height - imageHeight) / 2;
+    
+    // Use exact dimensions with no padding
+    const imageWidth = page.getWidth();
+    const imageHeight = page.getHeight();
+    const x = 0;
+    const y = 0;
+    
     page.drawImage(embeddedImage, {
       x,
       y,
@@ -328,9 +332,9 @@ app.post('/api/print', async (req, res) => {
       }
       console.log('Printed successfully');
       // Clean up temporary files
-      await fsPromises.unlink(tempImagePath);
-      await fsPromises.unlink(outputImagePath);
-      await fsPromises.unlink(pdfFilePath);
+      //await fsPromises.unlink(tempImagePath);
+      //await fsPromises.unlink(outputImagePath);
+     // await fsPromises.unlink(pdfFilePath);
       res.json({ message: 'Printed successfully' });
     });
 
