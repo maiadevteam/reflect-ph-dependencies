@@ -274,7 +274,7 @@ app.post('/api/print', async (req, res) => {
   .toFile(outputImagePath);
 
     // Read the converted image
-    const updatedImageBuffer = await fsPromises.readFile(outputImagePath);
+    // const updatedImageBuffer = await fsPromises.readFile(outputImagePath);
 
     // Determine the operating system for direct image printing
     const platform = process.platform;
@@ -286,7 +286,7 @@ app.post('/api/print', async (req, res) => {
       // Windows
       printCommand = path.join(process.cwd(), 'public', 'SumatraPDF-3.5.2-64.exe');
       // Print the image directly
-      printArgs = ['-print-to-default', '-silent', outputImagePath];
+      printArgs = ['-print-to-default', '-print-settings', 'landscape', '-silent', outputImagePath];
     } else if (platform === 'darwin' || platform === 'linux') {
       // macOS and Linux
       printCommand = 'lp';
