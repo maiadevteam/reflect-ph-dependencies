@@ -3,7 +3,21 @@ const http = require('http');
 const cors = require('cors');
 const { PDFDocument } = require('pdf-lib');
 const fs = require('fs');
+const fsPromises = require('fs').promises;
 const path = require('path');
+
+// Ensure temp directory exists
+const ensureTempDir = async () => {
+  const tempDir = path.join(process.cwd(), 'temp');
+  try {
+    await fsPromises.access(tempDir);
+  } catch (err) {
+    // Directory doesn't exist, create it
+    await fsPromises.mkdir(tempDir, { recursive: true });
+    console.log('Created temp directory');
+  }
+};
+
 const { spawn } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
 const sharp = require('sharp');
@@ -204,8 +218,13 @@ async function runCameraService() {
   }
 }
 
+// ensureTempDir is already defined at the top of the file
+
 async function main() {
   console.log('Starting main...');
+  
+  // Ensure temp directory exists
+  await ensureTempDir();
   
   try {
     const success = await runCameraService();
@@ -234,7 +253,7 @@ async function main() {
 }
 
 
-app.post('/print', async (req, res) => {
+app.post('/api/print', async (req, res) => {
   try {
     const { imageStr } = req.body;
 
@@ -243,8 +262,8 @@ app.post('/print', async (req, res) => {
     const imageBuffer = Buffer.from(base64Data, 'base64');
     const uniqueFileName = `${uuidv4()}.png`;
     const tempImagePath = path.join(process.cwd(), 'temp', uniqueFileName);
-    await fs.mkdir(path.dirname(tempImagePath), { recursive: true });
-    await fs.writeFile(tempImagePath, imageBuffer);
+    await fsPromises.mkdir(path.dirname(tempImagePath), { recursive: true });
+    await fsPromises.writeFile(tempImagePath, imageBuffer);
 
     // Convert image to 300 DPI using sharp
     const outputImagePath = path.join(process.cwd(), 'temp', `${uuidv4()}-300dpi.png`);
@@ -255,7 +274,7 @@ app.post('/print', async (req, res) => {
   .toFile(outputImagePath);
 
     // Read the converted image
-    const updatedImageBuffer = await fs.readFile(outputImagePath);
+    const updatedImageBuffer = await fsPromises.readFile(outputImagePath);
 
     // Create a new PDF document
     const pdfDoc = await PDFDocument.create();
@@ -276,9 +295,9 @@ app.post('/print', async (req, res) => {
     });
 
     // Save the PDF document to a file
-    const pdfFilePath = path.join(__dirname, 'temp', `${uuidv4()}.pdf`);
+    const pdfFilePath = path.join(process.cwd(), 'temp', `${uuidv4()}.pdf`);
     const pdfBytes = await pdfDoc.save();
-    await fs.writeFile(pdfFilePath, pdfBytes);
+    await fsPromises.writeFile(pdfFilePath, pdfBytes);
 
     // Determine the operating system
     const platform = process.platform;
@@ -308,14 +327,14 @@ app.post('/print', async (req, res) => {
       }
       console.log('Printed successfully');
       // Clean up temporary files
-      await fs.unlink(tempImagePath);
-      await fs.unlink(outputImagePath);
-      await fs.unlink(pdfFilePath);
+      await fsPromises.unlink(tempImagePath);
+      await fsPromises.unlink(outputImagePath);
+      await fsPromises.unlink(pdfFilePath);
       res.json({ message: 'Printed successfully' });
     });
 
-    // Return a response for the initial request
-    res.json({ message: 'Printing request received' });
+    // Don't send a response here, wait for the print process to complete
+    // Response will be sent in the 'close' event handler
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to print' });

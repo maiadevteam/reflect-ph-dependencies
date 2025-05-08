@@ -1,2 +1,4 @@
 /node_modules
 /dslr-photobooth-microservice/images
+/temp
+dist/
