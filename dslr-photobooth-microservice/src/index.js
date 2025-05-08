@@ -278,7 +278,8 @@ app.post('/api/print', async (req, res) => {
 
     // Create a new PDF document
     const pdfDoc = await PDFDocument.create();
-    const page = pdfDoc.addPage([1200, 1800]);
+    // Create page in portrait orientation (height > width)
+    const page = pdfDoc.addPage([1200, 1800].reverse());
     const { width, height } = page.getSize();
 
     // Embed the uploaded image into the PDF
