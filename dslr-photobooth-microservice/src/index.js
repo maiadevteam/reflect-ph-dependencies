@@ -23,10 +23,7 @@ const { v4: uuidv4 } = require('uuid');
 const sharp = require('sharp');
 const {cameraBrowser, CameraProperty, Option, ImageQuality, Camera, watchCameras} = require('napi-canon-cameras')
 const socketIo = require('socket.io');
-const usb = require('usb');
 const findProcess = require('find-process');
-const { SerialPort } = require('serialport');
-
 
 const app = express();
 const corsOptions = {
@@ -47,18 +44,42 @@ const io = socketIo(server, {
   }
 });
 
+let camera = null
+let liveViewInterval = null;
+let connectedClients = 0;
+
 io.on('connection', (socket) => {
   console.log('New client connected');
+  connectedClients++;
+  
+  // Start live view when first client connects
+  if (connectedClients === 1 && camera) {
+    console.log('Starting live view for first client');
+    setupLiveView();
+  }
   
   socket.on('disconnect', () => {
     console.log('Client disconnected');
+    connectedClients--;
+    
+    // Stop live view when last client disconnects
+    if (connectedClients === 0 && liveViewInterval) {
+      console.log('Stopping live view - no more clients connected');
+      clearInterval(liveViewInterval);
+      liveViewInterval = null;
+      
+      // Stop camera live view mode
+      if (camera && camera.getProperty(CameraProperty.ID.Evf_Mode).available) {
+        try {
+          camera.stopLiveView();
+          console.log('Camera live view stopped');
+        } catch (e) {
+          console.log('Error stopping camera live view:', e);
+        }
+      }
+    }
   });
 });
-
-
-
-let camera = null
-let liveViewInterval = null;
 
 async function resetCameraPort() {
   try {
@@ -148,12 +169,19 @@ async function handleCapturedImage(file) {
 }
 
 function setupLiveView() {
-  if (!camera.getProperty(CameraProperty.ID.Evf_Mode).available) {
+  // If live view is already running, don't start it again
+  if (liveViewInterval) {
+    console.log('Live view is already running');
+    return true;
+  }
+  
+  if (!camera || !camera.getProperty(CameraProperty.ID.Evf_Mode).available) {
     console.log('Live view mode is not available for this camera.');
     return false;
   }
 
   try {
+    console.log('Starting camera live view mode');
     camera.startLiveView();
     
     liveViewInterval = setInterval(() => {
@@ -168,6 +196,7 @@ function setupLiveView() {
       }
     }, 50);
 
+    console.log('Live view interval started');
     return true;
   } catch (error) {
     console.error('Error setting up live view:', error);
@@ -272,10 +301,6 @@ app.post('/api/print', async (req, res) => {
     
     // Save original image temporarily
     await fsPromises.writeFile(originalImagePath, imageBuffer);
-    
-    // Process the image with very high resolution approach
-    // First, determine the original image dimensions
-    const metadata = await sharp(imageBuffer).metadata();
     
     // Calculate high-res dimensions (4x the print size for supersampling)
     const highResWidth = 432 * 4;  // 1728 pixels
