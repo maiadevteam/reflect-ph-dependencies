@@ -226,15 +226,12 @@ async function runCameraService() {
 
     // Connect and configure camera
     await camera.connect();
-    
+        
     camera.setProperties({
       [CameraProperty.ID.SaveTo]: Option.SaveTo.Host,
       [CameraProperty.ID.ImageQuality]: ImageQuality.ID.LargeJPEGFine,
       [CameraProperty.ID.WhiteBalance]: Option.WhiteBalance.Fluorescent
     });
-
-    // Setup live view
-    setupLiveView();
 
     // Watch for camera changes
     watchCameras();
