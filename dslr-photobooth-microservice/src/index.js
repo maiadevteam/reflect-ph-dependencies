@@ -273,24 +273,51 @@ app.post('/api/print', async (req, res) => {
     // Save original image temporarily
     await fsPromises.writeFile(originalImagePath, imageBuffer);
     
-    // Process the image - rotate 90 degrees and resize to 432x288
-    // The image is always assumed to be portrait and needs to be rotated to landscape
+    // Process the image with very high resolution approach
+    // First, determine the original image dimensions
+    const metadata = await sharp(imageBuffer).metadata();
+    
+    // Calculate high-res dimensions (4x the print size for supersampling)
+    const highResWidth = 432 * 4;  // 1728 pixels
+    const highResHeight = 288 * 4; // 1152 pixels
+    
+    // Create a high-resolution version with high DPI
     await sharp(imageBuffer)
       .rotate(90) // Rotate 90 degrees clockwise
-      .resize(432, 288, { // Resize to exact dimensions
-        fit: 'contain',
-        background: { r: 255, g: 255, b: 255, alpha: 1 } // White background
+      // Resize to high resolution dimensions first
+      .resize(highResWidth, highResHeight, {
+        fit: 'fill',
+        withoutEnlargement: true,
+        background: { r: 255, g: 255, b: 255, alpha: 1 }
       })
-      .png()
+      // Apply image enhancement
+      .sharpen({
+        sigma: 2,
+        m1: 0.5,
+        m2: 0.5,
+        x1: 2,
+        y2: 10,
+        y3: 20
+      })
+      // Set high DPI (300 DPI is print quality)
+      .png({
+        quality: 100,
+        compressionLevel: 0,
+        density: 300
+      })
       .toFile(processedImagePath);
     
-    console.log('Image processed successfully to:', processedImagePath);
-    
-    // Create a PDF with the processed image since PDFtoPrinter.exe only works with PDFs
+    // Create a high-resolution PDF for printing
     const pdfDoc = await PDFDocument.create();
-    const page = pdfDoc.addPage([432, 288]); // Use the same dimensions for the PDF
     
-    // Read the processed image
+    // Create a PDF page with the same physical dimensions but higher DPI
+    // Convert to points (72 points = 1 inch, so 300 DPI = 4.17x scaling)
+    const pdfWidth = 432; 
+    const pdfHeight = 288;
+    
+    const page = pdfDoc.addPage([pdfWidth, pdfHeight]);
+    // Configure PDF for high resolution printing
+    page.setMediaBox(0, 0, pdfWidth, pdfHeight);
     const processedImageData = await fsPromises.readFile(processedImagePath);
     const embeddedImage = await pdfDoc.embedPng(processedImageData);
     
